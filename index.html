@@ -185,6 +185,30 @@
             color: #dc2626;
         }
 
+        .domain-list {
+            max-height: 400px;
+            overflow-y: auto;
+            padding-right: 10px;
+        }
+
+        .domain-list::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .domain-list::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 4px;
+        }
+
+        .domain-list::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+
+        .domain-list::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
         .domain-item {
             padding: 12px 15px;
             margin: 8px 0;
@@ -307,6 +331,20 @@
             transition: width 0.3s ease;
         }
 
+        .duplicate-info {
+            background: #fef3c7;
+            border: 1px solid #f59e0b;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 20px;
+            color: #92400e;
+            font-size: 14px;
+        }
+
+        .duplicate-info strong {
+            color: #78350f;
+        }
+
         @media (max-width: 768px) {
             .header h1 {
                 font-size: 2.5rem;
@@ -358,17 +396,21 @@
         </div>
 
         <div id="results" class="results">
+            <div id="duplicateInfo" class="duplicate-info" style="display: none;">
+                <strong>Duplicates removed:</strong> <span id="duplicateCount">0</span> duplicate domains were found and removed from the list.
+            </div>
+
             <div class="summary" id="summary"></div>
             
             <div class="results-grid">
                 <div class="result-column has-ads">
                     <h3>✅ Has ads.txt (<span id="hasCount">0</span>)</h3>
-                    <div id="hasAdsTxt"></div>
+                    <div class="domain-list" id="hasAdsTxt"></div>
                 </div>
                 
                 <div class="result-column no-ads">
                     <h3>❌ No ads.txt (<span id="noCount">0</span>)</h3>
-                    <div id="noAdsTxt"></div>
+                    <div class="domain-list" id="noAdsTxt"></div>
                 </div>
             </div>
 
@@ -383,6 +425,7 @@
         let checkResults = [];
         let processedCount = 0;
         let totalCount = 0;
+        let duplicateCount = 0;
 
         document.getElementById('checkBtn').addEventListener('click', async () => {
             const domainsText = document.getElementById('domains').value.trim();
@@ -391,7 +434,7 @@
                 return;
             }
 
-            const domains = domainsText.split('\n')
+            const rawDomains = domainsText.split('\n')
                 .map(d => d.trim())
                 .filter(d => d && d.length > 0)
                 .map(d => {
@@ -403,6 +446,11 @@
                     return clean;
                 })
                 .filter(d => d.includes('.')) // Only keep valid domain-like strings
+
+            // Remove duplicates
+            const originalCount = rawDomains.length;
+            const domains = [...new Set(rawDomains)];
+            duplicateCount = originalCount - domains.length;
 
             if (domains.length === 0) {
                 alert('Please enter valid domains');
@@ -681,6 +729,14 @@
             const hasAdsTxt = checkResults.filter(r => r.hasAdsTxt);
             const noAdsTxt = checkResults.filter(r => !r.hasAdsTxt);
             
+            // Show duplicate info if duplicates were found
+            if (duplicateCount > 0) {
+                document.getElementById('duplicateCount').textContent = duplicateCount;
+                document.getElementById('duplicateInfo').style.display = 'block';
+            } else {
+                document.getElementById('duplicateInfo').style.display = 'none';
+            }
+            
             // Update counts
             document.getElementById('hasCount').textContent = hasAdsTxt.length;
             document.getElementById('noCount').textContent = noAdsTxt.length;
@@ -689,7 +745,7 @@
             const summaryHtml = `
                 <div class="summary-card">
                     <div class="summary-number total-number">${checkResults.length}</div>
-                    <div class="summary-label">Total Domains</div>
+                    <div class="summary-label">Unique Domains</div>
                 </div>
                 <div class="summary-card">
                     <div class="summary-number success-number">${hasAdsTxt.length}</div>
@@ -699,10 +755,16 @@
                     <div class="summary-number error-number">${noAdsTxt.length}</div>
                     <div class="summary-label">No ads.txt</div>
                 </div>
+                ${duplicateCount > 0 ? `
+                <div class="summary-card">
+                    <div class="summary-number" style="color: #f59e0b;">${duplicateCount}</div>
+                    <div class="summary-label">Duplicates Removed</div>
+                </div>
+                ` : ''}
             `;
             document.getElementById('summary').innerHTML = summaryHtml;
             
-            // Display results
+            // Display results (scrollable containers will handle overflow automatically)
             document.getElementById('hasAdsTxt').innerHTML = hasAdsTxt
                 .map(r => createDomainItem(r, true)).join('');
             
