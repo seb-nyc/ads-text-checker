@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ads.txt Checker</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding: 40px 0;
+        }
+
+        .header h1 {
+            font-size: 3.5rem;
+            font-weight: 700;
+            color: white;
+            margin-bottom: 15px;
+            text-shadow: 0 2px 20px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            color: rgba(255,255,255,0.9);
+            max-width: 600px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+
+        .main-card {
+            background: rgba(255,255,255,0.95);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
+            margin-bottom: 30px;
+        }
+
+        .form-section {
+            margin-bottom: 30px;
+        }
+
+        .form-section label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #4a5568;
+            font-size: 1.1rem;
+        }
+
+        .domain-input {
+            width: 100%;
+            min-height: 120px;
+            padding: 15px;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 14px;
+            resize: vertical;
+            transition: all 0.3s ease;
+            background: #fafafa;
+        }
+
+        .domain-input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            background: white;
+        }
+
+        .check-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .check-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+        }
+
+        .check-btn:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+            color: #667eea;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f4f6;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .results {
+            display: none;
+            margin-top: 30px;
+        }
+
+        .results-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .result-column {
+            background: white;
+            border-radius: 16px;
+            padding: 25px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+            border: 1px solid #e2e8f0;
+        }
+
+        .result-column h3 {
+            font-size: 1.4rem;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f1f5f9;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .has-ads {
+            border-left: 4px solid #10b981;
+        }
+
+        .has-ads h3 {
+            color: #059669;
+        }
+
+        .no-ads {
+            border-left: 4px solid #ef4444;
+        }
+
+        .no-ads h3 {
+            color: #dc2626;
+        }
+
+        .domain-item {
+            padding: 12px 15px;
+            margin: 8px 0;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 14px;
+            transition: all 0.2s ease;
+            border: 1px solid #f1f5f9;
+        }
+
+        .domain-item:hover {
+            background: #f8fafc;
+            transform: translateX(5px);
+        }
+
+        .domain-success {
+            background: #f0fdf4;
+            border-color: #bbf7d0;
+        }
+
+        .domain-error {
+            background: #fef2f2;
+            border-color: #fecaca;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 10px;
+        }
+
+        .badge-success {
+            background: #dcfce7;
+            color: #16a34a;
+        }
+
+        .badge-error {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+
+        .badge-redirect {
+            background: #fef3c7;
+            color: #d97706;
+        }
+
+        .download-section {
+            text-align: center;
+            padding: 25px;
+            background: #f8fafc;
+            border-radius: 12px;
+            margin-top: 20px;
+        }
+
+        .download-btn {
+            background: #10b981;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 10px;
+            cursor: pointer;
+            margin: 0 10px;
+            transition: all 0.3s ease;
+        }
+
+        .download-btn:hover {
+            background: #059669;
+            transform: translateY(-1px);
+        }
+
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .summary-card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            border: 1px solid #e2e8f0;
+        }
+
+        .summary-number {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .summary-label {
+            color: #6b7280;
+            font-weight: 500;
+        }
+
+        .success-number { color: #10b981; }
+        .error-number { color: #ef4444; }
+        .total-number { color: #667eea; }
+
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: #e2e8f0;
+            border-radius: 3px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2.5rem;
+            }
+            
+            .main-card {
+                padding: 25px;
+            }
+            
+            .results-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .container {
+                padding: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Ads.txt Checker</h1>
+            <p>Bulk verify ads.txt files across multiple domains with professional-grade reliability and redirect handling</p>
+        </div>
+
+        <div class="main-card">
+            <div class="form-section">
+                <label for="domains">Enter domains (one per line):</label>
+                <textarea 
+                    id="domains" 
+                    class="domain-input" 
+                    placeholder="example.com&#10;google.com&#10;facebook.com&#10;&#10;Enter one domain per line..."
+                ></textarea>
+            </div>
+            
+            <button id="checkBtn" class="check-btn">
+                Check Ads.txt Files
+            </button>
+
+            <div id="loading" class="loading">
+                <div class="spinner"></div>
+                <p>Checking domains... This may take a few moments.</p>
+                <div class="progress-bar">
+                    <div id="progressFill" class="progress-fill"></div>
+                </div>
+                <p id="progressText">0 of 0 domains processed</p>
+            </div>
+        </div>
+
+        <div id="results" class="results">
+            <div class="summary" id="summary"></div>
+            
+            <div class="results-grid">
+                <div class="result-column has-ads">
+                    <h3>✅ Has ads.txt (<span id="hasCount">0</span>)</h3>
+                    <div id="hasAdsTxt"></div>
+                </div>
+                
+                <div class="result-column no-ads">
+                    <h3>❌ No ads.txt (<span id="noCount">0</span>)</h3>
+                    <div id="noAdsTxt"></div>
+                </div>
+            </div>
+
+            <div class="download-section">
+                <button id="downloadCSV" class="download-btn">Download CSV</button>
+                <button id="downloadJSON" class="download-btn">Download JSON</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let checkResults = [];
+        let processedCount = 0;
+        let totalCount = 0;
+
+        document.getElementById('checkBtn').addEventListener('click', async () => {
+            const domainsText = document.getElementById('domains').value.trim();
+            if (!domainsText) {
+                alert('Please enter at least one domain');
+                return;
+            }
+
+            const domains = domainsText.split('\n')
+                .map(d => d.trim())
+                .filter(d => d && d.length > 0)
+                .map(d => d.replace(/^https?:\/\//, '').replace(/\/$/, ''));
+
+            if (domains.length === 0) {
+                alert('Please enter valid domains');
+                return;
+            }
+
+            startChecking(domains);
+        });
+
+        async function startChecking(domains) {
+            checkResults = [];
+            processedCount = 0;
+            totalCount = domains.length;
+            
+            document.getElementById('checkBtn').disabled = true;
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('results').style.display = 'none';
+            
+            updateProgress();
+
+            // Process domains in batches to avoid overwhelming the browser
+            const batchSize = 5;
+            for (let i = 0; i < domains.length; i += batchSize) {
+                const batch = domains.slice(i, i + batchSize);
+                const promises = batch.map(domain => checkAdsTxt(domain));
+                
+                try {
+                    const batchResults = await Promise.allSettled(promises);
+                    batchResults.forEach((result, index) => {
+                        const domain = batch[index];
+                        if (result.status === 'fulfilled') {
+                            checkResults.push(result.value);
+                        } else {
+                            checkResults.push({
+                                domain: domain,
+                                hasAdsTxt: false,
+                                status: 'Error: ' + result.reason.message,
+                                redirects: 0,
+                                finalUrl: domain
+                            });
+                        }
+                        processedCount++;
+                        updateProgress();
+                    });
+                } catch (error) {
+                    console.error('Batch processing error:', error);
+                }
+                
+                // Small delay between batches
+                if (i + batchSize < domains.length) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+            }
+
+            displayResults();
+            document.getElementById('checkBtn').disabled = false;
+            document.getElementById('loading').style.display = 'none';
+        }
+
+        async function checkAdsTxt(domain) {
+            const maxRedirects = 10;
+            let redirectCount = 0;
+            let currentUrl = `https://${domain}/ads.txt`;
+            let finalUrl = currentUrl;
+            
+            const visitedUrls = new Set();
+            const timeout = 15000; // 15 second timeout
+
+            try {
+                while (redirectCount < maxRedirects) {
+                    if (visitedUrls.has(currentUrl)) {
+                        throw new Error('Infinite redirect loop detected');
+                    }
+                    visitedUrls.add(currentUrl);
+
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+                    try {
+                        const response = await fetch(currentUrl, {
+                            method: 'GET',
+                            mode: 'cors',
+                            signal: controller.signal,
+                            headers: {
+                                'Accept': 'text/plain,text/html,*/*'
+                            }
+                        });
+
+                        clearTimeout(timeoutId);
+                        finalUrl = response.url;
+
+                        if (response.status >= 200 && response.status < 300) {
+                            const contentType = response.headers.get('content-type') || '';
+                            const isTextFile = contentType.includes('text/') || contentType.includes('application/');
+                            
+                            if (isTextFile) {
+                                const content = await response.text();
+                                const hasValidContent = content.trim().length > 0 && 
+                                    (content.includes('google.com') || 
+                                     content.includes('adsystem') || 
+                                     content.includes('.com') ||
+                                     content.split('\n').some(line => line.trim().split(',').length >= 3));
+                                
+                                return {
+                                    domain: domain,
+                                    hasAdsTxt: hasValidContent,
+                                    status: hasValidContent ? 'Found' : 'Empty/Invalid',
+                                    redirects: redirectCount,
+                                    finalUrl: finalUrl
+                                };
+                            } else {
+                                return {
+                                    domain: domain,
+                                    hasAdsTxt: false,
+                                    status: 'Invalid content type',
+                                    redirects: redirectCount,
+                                    finalUrl: finalUrl
+                                };
+                            }
+                        } else if (response.status >= 300 && response.status < 400) {
+                            const location = response.headers.get('location');
+                            if (!location) {
+                                throw new Error('Redirect without location header');
+                            }
+                            
+                            currentUrl = new URL(location, currentUrl).toString();
+                            redirectCount++;
+                            continue;
+                        } else {
+                            return {
+                                domain: domain,
+                                hasAdsTxt: false,
+                                status: `HTTP ${response.status}`,
+                                redirects: redirectCount,
+                                finalUrl: finalUrl
+                            };
+                        }
+                    } catch (fetchError) {
+                        clearTimeout(timeoutId);
+                        
+                        if (fetchError.name === 'AbortError') {
+                            throw new Error('Request timeout');
+                        }
+                        throw fetchError;
+                    }
+                }
+                
+                throw new Error('Too many redirects');
+                
+            } catch (error) {
+                // Try HTTP as fallback if HTTPS fails
+                if (currentUrl.startsWith('https://') && error.message.includes('Failed to fetch')) {
+                    try {
+                        const httpUrl = `http://${domain}/ads.txt`;
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), timeout);
+                        
+                        const response = await fetch(httpUrl, {
+                            method: 'GET',
+                            mode: 'cors',
+                            signal: controller.signal
+                        });
+                        
+                        clearTimeout(timeoutId);
+                        
+                        if (response.ok) {
+                            const content = await response.text();
+                            const hasValidContent = content.trim().length > 0;
+                            
+                            return {
+                                domain: domain,
+                                hasAdsTxt: hasValidContent,
+                                status: hasValidContent ? 'Found (HTTP)' : 'Empty (HTTP)',
+                                redirects: redirectCount,
+                                finalUrl: response.url
+                            };
+                        }
+                    } catch (httpError) {
+                        // Fall through to return the original error
+                    }
+                }
+                
+                return {
+                    domain: domain,
+                    hasAdsTxt: false,
+                    status: `Error: ${error.message}`,
+                    redirects: redirectCount,
+                    finalUrl: finalUrl
+                };
+            }
+        }
+
+        function updateProgress() {
+            const percentage = totalCount > 0 ? (processedCount / totalCount) * 100 : 0;
+            document.getElementById('progressFill').style.width = percentage + '%';
+            document.getElementById('progressText').textContent = `${processedCount} of ${totalCount} domains processed`;
+        }
+
+        function displayResults() {
+            const hasAdsTxt = checkResults.filter(r => r.hasAdsTxt);
+            const noAdsTxt = checkResults.filter(r => !r.hasAdsTxt);
+            
+            // Update counts
+            document.getElementById('hasCount').textContent = hasAdsTxt.length;
+            document.getElementById('noCount').textContent = noAdsTxt.length;
+            
+            // Create summary
+            const summaryHtml = `
+                <div class="summary-card">
+                    <div class="summary-number total-number">${checkResults.length}</div>
+                    <div class="summary-label">Total Domains</div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-number success-number">${hasAdsTxt.length}</div>
+                    <div class="summary-label">Has ads.txt</div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-number error-number">${noAdsTxt.length}</div>
+                    <div class="summary-label">No ads.txt</div>
+                </div>
+            `;
+            document.getElementById('summary').innerHTML = summaryHtml;
+            
+            // Display results
+            document.getElementById('hasAdsTxt').innerHTML = hasAdsTxt
+                .map(r => createDomainItem(r, true)).join('');
+            
+            document.getElementById('noAdsTxt').innerHTML = noAdsTxt
+                .map(r => createDomainItem(r, false)).join('');
+            
+            document.getElementById('results').style.display = 'block';
+        }
+
+        function createDomainItem(result, hasAds) {
+            const badgeClass = result.status.includes('Error') ? 'badge-error' : 
+                               result.redirects > 0 ? 'badge-redirect' : 'badge-success';
+            
+            const statusText = result.redirects > 0 ? 
+                `${result.status} (${result.redirects} redirects)` : result.status;
+            
+            return `
+                <div class="domain-item ${hasAds ? 'domain-success' : 'domain-error'}">
+                    <strong>${result.domain}</strong>
+                    <span class="status-badge ${badgeClass}">${statusText}</span>
+                    ${result.finalUrl !== `https://${result.domain}/ads.txt` ? 
+                        `<br><small>Final URL: ${result.finalUrl}</small>` : ''}
+                </div>
+            `;
+        }
+
+        // Download functionality
+        document.getElementById('downloadCSV').addEventListener('click', () => {
+            const csv = [
+                ['Domain', 'Has ads.txt', 'Status', 'Redirects', 'Final URL'],
+                ...checkResults.map(r => [
+                    r.domain,
+                    r.hasAdsTxt ? 'Yes' : 'No',
+                    r.status,
+                    r.redirects,
+                    r.finalUrl
+                ])
+            ].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+            
+            downloadFile(csv, 'ads-txt-check-results.csv', 'text/csv');
+        });
+
+        document.getElementById('downloadJSON').addEventListener('click', () => {
+            const json = JSON.stringify(checkResults, null, 2);
+            downloadFile(json, 'ads-txt-check-results.json', 'application/json');
+        });
+
+        function downloadFile(content, filename, mimeType) {
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>
