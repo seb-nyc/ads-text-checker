@@ -656,25 +656,45 @@
 
             try {
                 const response = await fetch(url, {
-                    method: 'HEAD', // Use HEAD first to check if file exists
-                    mode: 'no-cors', // This won't give us the content but will tell us if it exists
+                    method: 'GET',
                     signal: controller.signal
                 });
 
                 clearTimeout(timeoutId);
 
-                // With no-cors mode, we can't read the response, but we can check if it succeeded
-                return {
-                    domain: originalDomain,
-                    hasAdsTxt: true, // If we got here without error, the file likely exists
-                    status: 'Found (no-cors)',
-                    redirects: 0,
-                    finalUrl: url
-                };
+                if (response.ok) {
+                    const content = await response.text();
+                    const hasValidContent = isValidAdsTxt(content);
+                    
+                    return {
+                        domain: originalDomain,
+                        hasAdsTxt: hasValidContent,
+                        status: hasValidContent ? 'Found' : 'Empty/Invalid',
+                        redirects: 0,
+                        finalUrl: url,
+                        contentLength: content.length
+                    };
+                } else {
+                    return {
+                        domain: originalDomain,
+                        hasAdsTxt: false,
+                        status: `HTTP ${response.status}`,
+                        redirects: 0,
+                        finalUrl: url
+                    };
+                }
                 
             } catch (error) {
                 clearTimeout(timeoutId);
-                throw error;
+                
+                // Return a proper error result instead of throwing
+                return {
+                    domain: originalDomain,
+                    hasAdsTxt: false,
+                    status: 'CORS/Network Error',
+                    redirects: 0,
+                    finalUrl: url
+                };
             }
         }
 
