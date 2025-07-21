@@ -457,7 +457,7 @@
         async function checkAdsTxt(domain) {
             const maxRedirects = 10;
             let redirectCount = 0;
-            let currentUrl = `https://${domain}/ads.txt`;
+            let currentUrl = `https://www.${domain}/ads.txt`;
             let finalUrl = currentUrl;
             
             const visitedUrls = new Set();
@@ -548,7 +548,7 @@
                 // Try HTTP as fallback if HTTPS fails
                 if (currentUrl.startsWith('https://') && error.message.includes('Failed to fetch')) {
                     try {
-                        const httpUrl = `http://${domain}/ads.txt`;
+                        const httpUrl = `http://www.${domain}/ads.txt`;
                         const controller = new AbortController();
                         const timeoutId = setTimeout(() => controller.abort(), timeout);
                         
