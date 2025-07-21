@@ -394,7 +394,15 @@
             const domains = domainsText.split('\n')
                 .map(d => d.trim())
                 .filter(d => d && d.length > 0)
-                .map(d => d.replace(/^https?:\/\//, '').replace(/\/$/, ''));
+                .map(d => {
+                    // Clean up the domain
+                    let clean = d.replace(/^https?:\/\//, '') // Remove protocol
+                              .replace(/\/.*$/, '') // Remove path
+                              .replace(/\/$/, '') // Remove trailing slash
+                              .toLowerCase(); // Normalize case
+                    return clean;
+                })
+                .filter(d => d.includes('.')) // Only keep valid domain-like strings
 
             if (domains.length === 0) {
                 alert('Please enter valid domains');
@@ -455,136 +463,212 @@
         }
 
         async function checkAdsTxt(domain) {
+            const timeout = 15000;
             const maxRedirects = 10;
-            let redirectCount = 0;
-            let currentUrl = `https://www.${domain}/ads.txt`;
-            let finalUrl = currentUrl;
             
-            const visitedUrls = new Set();
-            const timeout = 15000; // 15 second timeout
-
-            try {
-                while (redirectCount < maxRedirects) {
-                    if (visitedUrls.has(currentUrl)) {
-                        throw new Error('Infinite redirect loop detected');
+            // Try multiple URL variations
+            const urlsToTry = [
+                `https://www.${domain}/ads.txt`,
+                `https://${domain}/ads.txt`,
+                `http://www.${domain}/ads.txt`, 
+                `http://${domain}/ads.txt`
+            ];
+            
+            // Remove duplicates (in case domain already has www)
+            const uniqueUrls = [...new Set(urlsToTry)];
+            
+            for (let i = 0; i < uniqueUrls.length; i++) {
+                const url = uniqueUrls[i];
+                
+                try {
+                    const result = await checkSingleUrl(url, domain, timeout, maxRedirects);
+                    if (result.hasAdsTxt || result.status !== 'CORS/Network Error') {
+                        return result;
                     }
-                    visitedUrls.add(currentUrl);
-
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-                    try {
-                        const response = await fetch(currentUrl, {
-                            method: 'GET',
-                            mode: 'cors',
-                            signal: controller.signal,
-                            headers: {
-                                'Accept': 'text/plain,text/html,*/*'
-                            }
-                        });
-
-                        clearTimeout(timeoutId);
-                        finalUrl = response.url;
-
-                        if (response.status >= 200 && response.status < 300) {
-                            const contentType = response.headers.get('content-type') || '';
-                            const isTextFile = contentType.includes('text/') || contentType.includes('application/');
-                            
-                            if (isTextFile) {
-                                const content = await response.text();
-                                const hasValidContent = content.trim().length > 0 && 
-                                    (content.includes('google.com') || 
-                                     content.includes('adsystem') || 
-                                     content.includes('.com') ||
-                                     content.split('\n').some(line => line.trim().split(',').length >= 3));
-                                
-                                return {
-                                    domain: domain,
-                                    hasAdsTxt: hasValidContent,
-                                    status: hasValidContent ? 'Found' : 'Empty/Invalid',
-                                    redirects: redirectCount,
-                                    finalUrl: finalUrl
-                                };
-                            } else {
-                                return {
-                                    domain: domain,
-                                    hasAdsTxt: false,
-                                    status: 'Invalid content type',
-                                    redirects: redirectCount,
-                                    finalUrl: finalUrl
-                                };
-                            }
-                        } else if (response.status >= 300 && response.status < 400) {
-                            const location = response.headers.get('location');
-                            if (!location) {
-                                throw new Error('Redirect without location header');
-                            }
-                            
-                            currentUrl = new URL(location, currentUrl).toString();
-                            redirectCount++;
-                            continue;
-                        } else {
-                            return {
-                                domain: domain,
-                                hasAdsTxt: false,
-                                status: `HTTP ${response.status}`,
-                                redirects: redirectCount,
-                                finalUrl: finalUrl
-                            };
-                        }
-                    } catch (fetchError) {
-                        clearTimeout(timeoutId);
-                        
-                        if (fetchError.name === 'AbortError') {
-                            throw new Error('Request timeout');
-                        }
-                        throw fetchError;
+                } catch (error) {
+                    // Continue to next URL if this one fails
+                    if (i === uniqueUrls.length - 1) {
+                        // This was the last URL, return the error
+                        return {
+                            domain: domain,
+                            hasAdsTxt: false,
+                            status: `Error: ${error.message}`,
+                            redirects: 0,
+                            finalUrl: url
+                        };
                     }
                 }
+            }
+            
+            return {
+                domain: domain,
+                hasAdsTxt: false,
+                status: 'All URLs failed',
+                redirects: 0,
+                finalUrl: domain
+            };
+        }
+
+        async function checkSingleUrl(startUrl, originalDomain, timeout, maxRedirects) {
+            let redirectCount = 0;
+            let currentUrl = startUrl;
+            const visitedUrls = new Set();
+
+            // Use a CORS proxy for better compatibility
+            const proxyUrl = 'https://api.allorigins.win/get?url=';
+            const encodedUrl = encodeURIComponent(currentUrl);
+            
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+                const response = await fetch(proxyUrl + encodedUrl, {
+                    method: 'GET',
+                    signal: controller.signal,
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+
+                clearTimeout(timeoutId);
+
+                if (!response.ok) {
+                    throw new Error(`Proxy returned ${response.status}`);
+                }
+
+                const data = await response.json();
                 
-                throw new Error('Too many redirects');
+                // Check if the proxy successfully fetched the content
+                if (data.status && data.status.http_code) {
+                    const httpCode = data.status.http_code;
+                    
+                    if (httpCode >= 200 && httpCode < 300) {
+                        const content = data.contents || '';
+                        const hasValidContent = isValidAdsTxt(content);
+                        
+                        return {
+                            domain: originalDomain,
+                            hasAdsTxt: hasValidContent,
+                            status: hasValidContent ? 'Found' : 'Empty/Invalid',
+                            redirects: redirectCount,
+                            finalUrl: currentUrl,
+                            contentLength: content.length
+                        };
+                    } else if (httpCode === 404) {
+                        return {
+                            domain: originalDomain,
+                            hasAdsTxt: false,
+                            status: 'Not Found (404)',
+                            redirects: redirectCount,
+                            finalUrl: currentUrl
+                        };
+                    } else {
+                        return {
+                            domain: originalDomain,
+                            hasAdsTxt: false,
+                            status: `HTTP ${httpCode}`,
+                            redirects: redirectCount,
+                            finalUrl: currentUrl
+                        };
+                    }
+                } else {
+                    // Fallback: try direct fetch (may fail due to CORS)
+                    return await directFetch(currentUrl, originalDomain, timeout);
+                }
                 
             } catch (error) {
-                // Try HTTP as fallback if HTTPS fails
-                if (currentUrl.startsWith('https://') && error.message.includes('Failed to fetch')) {
-                    try {
-                        const httpUrl = `http://www.${domain}/ads.txt`;
-                        const controller = new AbortController();
-                        const timeoutId = setTimeout(() => controller.abort(), timeout);
-                        
-                        const response = await fetch(httpUrl, {
-                            method: 'GET',
-                            mode: 'cors',
-                            signal: controller.signal
-                        });
-                        
-                        clearTimeout(timeoutId);
-                        
-                        if (response.ok) {
-                            const content = await response.text();
-                            const hasValidContent = content.trim().length > 0;
-                            
-                            return {
-                                domain: domain,
-                                hasAdsTxt: hasValidContent,
-                                status: hasValidContent ? 'Found (HTTP)' : 'Empty (HTTP)',
-                                redirects: redirectCount,
-                                finalUrl: response.url
-                            };
-                        }
-                    } catch (httpError) {
-                        // Fall through to return the original error
-                    }
+                if (error.name === 'AbortError') {
+                    return {
+                        domain: originalDomain,
+                        hasAdsTxt: false,
+                        status: 'Timeout',
+                        redirects: redirectCount,
+                        finalUrl: currentUrl
+                    };
                 }
                 
-                return {
-                    domain: domain,
-                    hasAdsTxt: false,
-                    status: `Error: ${error.message}`,
-                    redirects: redirectCount,
-                    finalUrl: finalUrl
-                };
+                // Try direct fetch as fallback
+                try {
+                    return await directFetch(currentUrl, originalDomain, timeout);
+                } catch (directError) {
+                    return {
+                        domain: originalDomain,
+                        hasAdsTxt: false,
+                        status: 'CORS/Network Error',
+                        redirects: redirectCount,
+                        finalUrl: currentUrl
+                    };
+                }
             }
+        }
+
+        async function directFetch(url, originalDomain, timeout) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+            try {
+                const response = await fetch(url, {
+                    method: 'HEAD', // Use HEAD first to check if file exists
+                    mode: 'no-cors', // This won't give us the content but will tell us if it exists
+                    signal: controller.signal
+                });
+
+                clearTimeout(timeoutId);
+
+                // With no-cors mode, we can't read the response, but we can check if it succeeded
+                return {
+                    domain: originalDomain,
+                    hasAdsTxt: true, // If we got here without error, the file likely exists
+                    status: 'Found (no-cors)',
+                    redirects: 0,
+                    finalUrl: url
+                };
+                
+            } catch (error) {
+                clearTimeout(timeoutId);
+                throw error;
+            }
+        }
+
+        function isValidAdsTxt(content) {
+            if (!content || content.trim().length === 0) {
+                return false;
+            }
+            
+            const trimmed = content.trim();
+            const lines = trimmed.split('\n').filter(line => line.trim().length > 0);
+            
+            if (lines.length === 0) {
+                return false;
+            }
+            
+            // Check for common ads.txt patterns
+            const hasAdsTxtFormat = lines.some(line => {
+                const cleanLine = line.trim();
+                
+                // Skip comments
+                if (cleanLine.startsWith('#')) {
+                    return false;
+                }
+                
+                // Check for ads.txt format: domain.com, publisher-id, relationship, certification-authority-id
+                const parts = cleanLine.split(',').map(p => p.trim());
+                if (parts.length >= 3) {
+                    // First part should be a domain-like string
+                    const domain = parts[0];
+                    const relationship = parts[2].toLowerCase();
+                    
+                    return domain.includes('.') && 
+                           (relationship === 'direct' || relationship === 'reseller');
+                }
+                
+                return false;
+            });
+            
+            // Also accept files that contain common ad network domains
+            const hasAdNetworks = /(?:google|doubleclick|amazon|facebook|twitter|linkedin|microsoft|yahoo|aol|pubmatic|rubicon|appnexus|openx|indexexchange)\.com/i.test(content);
+            
+            return hasAdsTxtFormat || hasAdNetworks;
         }
 
         function updateProgress() {
